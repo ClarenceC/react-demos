@@ -1,0 +1,237 @@
+<!DOCTYPE>
+<html>
+    <head>
+        <title>Hello React</title>
+        <meta charset="utf-8">
+    </head>
+    <body>
+        <div id="app"></div>
+        <script src="../build/react.js"></script>
+        <script src="../build/react-dom.js"></script>
+        <script>
+            let headers = ["Book","Author","Language","Published","Sales"];
+            let data = [
+                ["The Lord of the Rings","J.R.R.Tolkien","English","1954-1955","150 million"],
+                ["Le Petit Prince(The Little Prince)","Antoine de Saint-Exupery","French","1943","140 million"],
+                ["Harry Potter and the Philosopher's Stone","J.K.Rowling","English","1997","107 million"],
+                ["The Hobbit","J.R.R. Tolkien","English","1937","100 million"],
+                ["She: A History of Adventure","H. Rider Haggard","English","1887","100 million"],
+            ];
+            
+            let Excel = React.createClass({
+                displayName:'Excel',
+                 _preSearchData:null,
+                 _log:[],
+                getInitialState:function(){//初始化数据
+                    return {
+                        data:this.props.initialData,
+                        sortby:null,
+                        descending:false,
+                        edit:null,//{row:index, cell:index}
+                        search:false,
+                        };
+                },
+                propTypes:{//数据验证
+                    headers:React.PropTypes.arrayOf(React.PropTypes.string),//验证表头
+                    initialData:React.PropTypes.arrayOf(React.PropTypes.arrayOf(React.PropTypes.string)),//验证表内容数据
+                },
+                
+                _sort:function(e){//排序
+                    let column = e.target.cellIndex;
+                    let data = this.state.data.slice();
+                    let descending = this.state.sortby === column && !this.state.descending;
+                    data.sort((a,b)=>{
+                        return descending?(a[column]<b[column]?1:-1):(a[column] > b[column]? 1: -1);
+                    });
+                    this.setState({
+                        data:data,
+                        sortby:column,
+                        descending:descending,
+                    });
+                },
+                _showEditor:function(e){//显示编辑框
+                    this.setState({
+                        edit:{
+                        row:parseInt(e.target.dataset.row,10),
+                        cell:e.target.cellIndex,
+                        }
+                    });
+                },
+                _save:function(e){//保存编辑框
+                    e.preventDefault();
+                    let input = e.target.firstChild;
+                    let data = this.state.data.slice();
+                    data[this.state.edit.row][this.state.edit.cell] = input.value;
+                    this.setState({
+                        edit:null,//完成编辑
+                        data:data,//更新数据
+                    });
+                },
+                _search:function(e){//搜索数据
+                    let needle = e.target.value.toLowerCase();//
+                    if(!needle){//没有字符串的时候还原 数据表
+                        this.setState({data:this._preSearchData});
+                        return ;
+                    }
+                    let idx = e.target.dataset.idx;
+                    let searchdata = this._preSearchData.filter(function(row){
+                        return row[idx].toString().toLowerCase().indexOf(needle) > -1 ;
+                    });
+                    this.setState({data:searchdata});
+                },
+                _renderSearch:function(){
+                    if(!this.state.search){//优化搜索控件
+                        return null;
+                    }
+                    return (
+                        React.DOM.tr({onChange:this._search},
+                            this.props.headers.map((_ignore,idx)=>{
+                                return React.DOM.td({key:idx},
+                                    React.DOM.input({
+                                        type:'text',
+                                        'data-idx':idx,    
+                                    })
+                                );
+                            })
+                        )
+                    );
+                },
+                _toggleSearch:function(){//搜索开关
+                    if(this.state.search){
+                        this.setState({
+                            data:this._preSearchData,
+                            search:false,
+                        });
+                        this._preSearchData = null;
+                    }else{
+                        this._preSearchData = this.state.data;
+                        this.setState({
+                            search:true,
+                        });
+                    }
+                },
+                _renderToolbar:function(){//渲染搜索栏
+                    return React.DOM.div({className:'toolbar'},
+                    React.DOM.button(
+                        {
+                            onClick:this._toggleSearch,
+                            className:'toolbar',
+                        },
+                    'search'),
+                    React.DOM.a({
+                        onClick:this._download.bind(this,'json'),
+                        href:'data.json'
+                    },'Export JSON'),
+                    React.DOM.a({
+                        onClick:this._download.bind(this,'csv'),
+                        href:'data.csv'
+                    },'Export CSV')
+                    );
+                },
+                _logSetState:function(newState){
+                    this._log.push(JSON.parse(JSON.stringify(this._log.length === 0? this.state:newState)));
+                    this.setState(newState);
+                },
+                _renderTable:function(){ //渲染表格
+                    return (
+                        React.DOM.table(null,
+                            React.DOM.thead({onClick:this._sort},
+                                React.DOM.tr(null,
+                                    this.props.headers.map(function(title,idx){
+                                        if(this.state.sortby === idx){
+                                            title += this.state.descending ? '\u2191':'\u2193';
+                                        }
+                                        return React.DOM.th({key:idx},title);
+                                    },this)
+                                )
+                            ),
+                            React.DOM.tbody({onDoubleClick:this._showEditor},
+                                this._renderSearch(),
+                                this.state.data.map(function(row,rowidx){
+                                    return (
+                                        React.DOM.tr({key:rowidx},
+                                            row.map((cell,idx)=>{
+                                                let content = cell;
+                                                let edit = this.state.edit;
+                                                if(edit&&edit.row === rowidx && edit.cell === idx){
+                                                    content = React.DOM.form({onSubmit:this._save},
+                                                        React.DOM.input({
+                                                            type:'text',
+                                                            defaultValue:content,
+                                                        })
+                                                    );
+                                                }
+
+                                                return React.DOM.td({
+                                                    key:idx,
+                                                    'data-row':rowidx
+                                                    },content);
+                                            },this)
+                                        )
+                                    );
+                                },this)
+                            ),
+                        )
+                    );
+                },
+                _download:function(format,ev){
+                    let contents = format === 'json'
+                    ?JSON.stringify(this.state.data)
+                    :this.state.data.reduce(function(result,row){
+                        return result
+                            + row.reduce(function(rowresult,cell,idx){
+                                return rowresult
+                                + '"'
+                                + cell.replace(/"/g,'"')
+                                + '"'
+                                + (idx < row.length - 1 ? ',':'')
+                            })
+                            + "\n";
+                    },'');
+                    let URL = window.URL || window.webkitURL;
+                    let blob = new Blob([contents],{type:'text/'+format});
+                    ev.target.href = URL.createObjectURL(blob);
+                    ev.target.download = 'data.' + format;
+                },
+                _replay:function(){//回放功能
+                    if(this._log.length === 0){
+                        console.warn('No state to replay yet');
+                        return ;
+                    }
+                    let idx = -1;
+                    let interval = setInterval(function(){
+                        idx++;
+                        if(idx === this._log.length -1){
+                            clearInterval(interval);
+                        }
+                        this.setState(this._log[idx]);
+                    },bind(this),1000);
+                },
+                componentDidMount:function(){
+                    document.onkeydown = function(e){
+                        if(e.altKey && e.shiftKey && e.keyCode === 82){
+                            this._replay();
+                        }
+                    }.bind(this);
+                },
+                render:function(){//总渲染
+                    return (
+                        React.DOM.div(null,
+                        this._renderToolbar(),
+                        this._renderTable(),
+                        )
+                    );
+                },
+            });
+
+            ReactDOM.render(
+                React.createElement(Excel,{
+                    headers:headers,
+                    initialData:data,
+                }),
+                // React.DOM.h1(null,"Hello world!"),
+                document.getElementById("app")
+            );
+        </script>
+    </body>
+</html>
